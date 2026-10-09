@@ -142,7 +142,8 @@ const BURGER = ["addon-coke-regular", "addon-fries-regular", "addon-peach-mango-
 const PASTA = ["addon-coke-regular", "addon-peach-mango-pie", "addon-sundae-chocolate"];
 const RICE_MEAL = ["addon-coke-regular", "addon-gravy", "addon-peach-mango-pie"];
 const SIDE = ["addon-coke-regular", "addon-peach-mango-pie"];
-const DESSERT = ["addon-coke-float"];
+// A dessert pairs with a drink, never with another dessert.
+const DESSERT = ["addon-coke-float", "addon-coke-regular"];
 const DRINK = ["addon-peach-mango-pie", "addon-sundae-chocolate"];
 const COMBO = ["addon-upsize-drink", "addon-peach-mango-pie", "addon-sundae-chocolate"];
 const CHICKEN_COMBO = ["addon-upsize-drink", "addon-gravy", "addon-peach-mango-pie", "addon-sundae-chocolate"];
@@ -327,7 +328,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 89,
     image: "/menu/halo-halo.png",
     tags: ["new"],
-    addonIds: ["addon-peach-mango-pie"],
+    addonIds: DESSERT,
   },
   {
     id: "chocolate-sundae",
@@ -336,7 +337,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "desserts",
     price: 49,
     image: "/menu/chocolate-sundae.png",
-    addonIds: ["addon-peach-mango-pie"],
+    addonIds: DESSERT,
   },
   // Beverages
   {
@@ -475,6 +476,11 @@ export function combosForItem(itemId: string): Combo[] {
 }
 
 /** True when the order already has a drink — a drink item, or a combo/meal that comes with one. */
+/** True when the order already has a dessert (pie, sundae, Halo-Halo). */
+export function hasDessertIn(lines: Array<{ refId: string }>): boolean {
+  return lines.some((l) => findMenuItem(l.refId)?.category === "desserts");
+}
+
 export function hasDrinkIn(lines: Array<{ refId: string }>): boolean {
   return lines.some((l) => {
     const i = findMenuItem(l.refId);

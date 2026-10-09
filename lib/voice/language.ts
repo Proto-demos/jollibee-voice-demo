@@ -15,7 +15,14 @@ const ENGLISH = new Set(
 
 /** null when the line gives no clear signal (e.g. just a menu name). */
 export function detectLanguage(text: string): CustomerLanguage | null {
-  const words = text.toLowerCase().match(/[a-z']+/g) ?? [];
+  // Menu names aren't a language signal: "1-pc Chickenjoy with Rice" comes back
+  // as "one-piece Chickenjoy with rice" in a Tagalog order.
+  const words =
+    text
+      .toLowerCase()
+      .replace(/\b(one|two|three|four|six|\d+)[- ]?(piece|pc)s?\b/g, " ")
+      .replace(/\bwith rice\b/g, " ")
+      .match(/[a-z']+/g) ?? [];
   let tl = 0;
   let en = 0;
   for (const w of words) {

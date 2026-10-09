@@ -10,6 +10,7 @@ import {
   findMenuItem,
   findOrderable,
   findProduct,
+  hasDessertIn,
   hasDrinkIn,
   isPerItemAddon,
   type ChoiceKind,
@@ -380,6 +381,7 @@ function offersFor(cart: CartContextValue, productId: string) {
   const lines = cart.getState().lines;
   const ordered = new Set(lines.flatMap((l) => (l.kind === "combo" ? COMBOS.find((c) => c.id === l.refId)?.itemIds ?? [] : [l.refId])));
   const hasDrink = hasDrinkIn(lines);
+  const hasDessert = hasDessertIn(lines);
   const own = lines.filter((l) => l.kind !== "addon" && l.refId === product.id);
   const noUpsize = own.length === 0 || own.every((l) => l.modifiers.includes(UPSIZE_ADDON));
   // One drink is enough: once the order has any drink (or a combo or meal
@@ -388,7 +390,9 @@ function offersFor(cart: CartContextValue, productId: string) {
     .map((id) => ADDONS.find((a) => a.id === id))
     .filter((a): a is NonNullable<typeof a> => Boolean(a))
     .filter((a) => !(a.itemId && ordered.has(a.itemId)))
-    .filter((a) => !(noUpsize && a.id === UPSIZE_ADDON) && !(hasDrink && a.category === "drink"));
+    .filter((a) => !(noUpsize && a.id === UPSIZE_ADDON) && !(hasDrink && a.category === "drink"))
+    // Likewise one dessert: with a pie, sundae or Halo-Halo already in, no more desserts.
+    .filter((a) => !(hasDessert && a.category === "dessert"));
   const rank = (a: (typeof addons)[number]) => (a.id === UPSIZE_ADDON ? 0 : !hasDrink && a.category === "drink" ? 1 : 2);
   addons.sort((a, b) => rank(a) - rank(b));
   const combo = comboOffer(cart, product.id);
@@ -518,7 +522,11 @@ function baseHandlers(
 
   return {
     add_item: ({ item_id, quantity, drink_size, drinks }) => {
-      const id = String(item_id);
+      let id = String(item_id);
+      // A drink or dessert add-on id ("addon-coke-regular") is really that menu item.
+      const addon = findAddon(id);
+      if (addon?.itemId) id = addon.itemId;
+      else if (addon) return { error: `${addon.name} is an add-on – call add_addon with addon_id "${addon.id}".` };
       if (!findMenuItem(id) && !findCombo(id)) return { error: `Unknown item_id: ${item_id}` };
       return addProduct(id, quantity, drink_size, drinks);
     },
@@ -646,8 +654,27 @@ function baseHandlers(
     },
     get_cart: () => summarize(cart),
     list_addons_for_item: ({ item_id }) => {
-      const offers = offersFor(cart, String(item_id));
+      const offers = offersFor(cart, findAddon(String(item_id))?.itemId ?? String(item_id));
       if (!offers) return { error: `Unknown item_id: ${item_id}` };
+      // Put the first offer on screen now, so Joy confirms and pitches in one
+      // spoken reply – a separate show_offer step let her fill the gap with
+      // "sandali lang, may upgrade ako…". Only once nothing is waiting for its
+      // drink (the drink question comes first) and only for the product just
+      // added, so a multi-item order shows the offer for its last item.
+      const lines = cart.getState().lines;
+      const pending = lines.some((l) => Object.keys(choicesToPick(l)).length);
+      const latest = lines.filter((l) => l.kind !== "addon").at(-1)?.refId === findProduct(findAddon(String(item_id))?.itemId ?? String(item_id))?.id;
+      const first = offers[0];
+      const firstId = first && ("combo_id" in first ? first.combo_id : first.addon_id);
+      const found = firstId ? findOrderable(firstId) : undefined;
+      if (found && !pending && latest) {
+        ui.onSuggest?.([{ refId: found.data.id, kind: found.kind, name: found.data.name, price: found.data.price, image: found.data.image }]);
+        return {
+          addons: offers,
+          offer_card_shown: found.data.id,
+          note: "The first offer is already on screen as the offer card – confirm the order and pitch it in this same spoken reply; don't call show_offer for it (only to pitch a different product).",
+        };
+      }
       return { addons: offers };
     },
     show_offer: ({ id }) => {
