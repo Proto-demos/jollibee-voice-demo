@@ -77,14 +77,14 @@ export function MenuDrawer() {
             <p className="text-[9.5px] font-semibold uppercase tracking-widest text-neutral-400 px-1.5 pt-2.5 pb-1 sticky top-0 bg-background">
               {group.label}
             </p>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-3">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-3 gap-y-1">
             {group.rows.map((row) => {
               const line = findLineByRef(row.id);
               return (
                 <div
                   key={row.id}
                   className={`flex items-center gap-2.5 px-1.5 py-1.5 rounded-xl ${
-                    line ? "bg-[#FBEAE8] outline outline-[1.5px] outline-jb-red" : ""
+                    line ? "bg-[#FBEAE8] ring-[1.5px] ring-inset ring-jb-red" : ""
                   }`}
                 >
                   <MenuThumb
