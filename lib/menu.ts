@@ -25,31 +25,72 @@ export interface MenuItem {
   price: number;
   image: string;
   tags?: Array<"bestseller" | "new" | "spicy">;
+  /** Comes with a drink (Kids Meals) — counts as having a drink. */
+  includesDrink?: boolean;
+  /** What the customer picks for ONE of these — e.g. a Kids Meal: 1 drink. */
+  choose?: Partial<Record<ChoiceKind, number>>;
   /** Addon ids suggested when this item is ordered (grounds upsell offers). */
   addonIds?: string[];
   /** Can be upgraded into a combo/meal by adding a drink + side. */
   comboEligible?: boolean;
 }
 
+/** The included things a customer picks for a combo or meal: at Jollibee, just the drink. */
+export type ChoiceKind = "drinks";
+export const CHOICE_PREFIX: Record<ChoiceKind, string> = { drinks: "drink-" };
+export const CHOICE_KINDS: ChoiceKind[] = ["drinks"];
+export function choiceKindOf(id: string): ChoiceKind | undefined {
+  return CHOICE_KINDS.find((k) => id.startsWith(CHOICE_PREFIX[k]));
+}
+
 export interface Addon {
   id: string;
   name: string;
   price: number;
-  category: "drink" | "side" | "dessert" | "upsize";
+  /**
+   * "upsize" goes on specific combos and meals; "choice" is the drink picked
+   * for a combo or meal (no charge); "side", "dessert" and "drink" are items
+   * of their own.
+   */
+  category: "upsize" | "extra" | "choice" | "side" | "dessert" | "drink";
   /** Reuses the matching menu item's photo where one exists. */
   image?: string;
   /** Short appetising sell-line Joy uses when pitching this add-on. */
   pitch?: string;
+  /** For sides, desserts and drinks: the menu item it really is, so it lands in the order as that item. */
+  itemId?: string;
+  /** How it reads under an item, e.g. "Sprite". */
+  shortName?: string;
 }
+
+/** The drink upsize attaches to specific combos and meals; sides, desserts and drinks are their own lines. */
+export function isPerItemAddon(addon: Addon): boolean {
+  return addon.category === "upsize" || addon.category === "extra";
+}
+
+/** Menu categories whose items can take per-item add-ons (drink upsize). Combos always can. */
+export const CUSTOMISABLE_CATEGORIES: CategoryId[] = ["combos", "kids"];
+
+/** The drink upsize on combos and meals. */
+export const UPSIZE_ADDON = "addon-upsize-drink";
 
 export interface Combo {
   id: string;
   name: string;
   description: string;
+  /** What's in it: the main item first, then the side, then the drink (the customer picks the drink). */
   itemIds: string[];
+  /** Other items that can be made into this combo ("gawin na nating combo"), e.g. a 1-pc Chickenjoy Solo. */
+  upgradeFrom?: string[];
   price: number;
   image: string;
   tags?: Array<"bestseller" | "new">;
+  /** Comes with a drink — counts as having a drink. */
+  includesDrink?: boolean;
+  /** What the customer picks for ONE combo: its drink. */
+  choose?: Partial<Record<ChoiceKind, number>>;
+  /** Addon ids suggested when this combo is ordered (grounds upsell offers). */
+  addonIds?: string[];
 }
 
 export const CATEGORIES: Category[] = [
@@ -66,15 +107,46 @@ export const CATEGORIES: Category[] = [
 ];
 
 export const ADDONS: Addon[] = [
-  { id: "addon-coke-regular", name: "Coke Regular", price: 45, category: "drink", image: "/menu/coke-regular.png" , pitch: "Ice-cold Coke — panghugas ng crispy Chickenjoy" },
-  { id: "addon-coke-float", name: "Coke Float", price: 60, category: "drink", image: "/menu/coke-float.png" , pitch: "Coke Float — may creamy vanilla ice cream sa ibabaw, paborito ng lahat" },
-  { id: "addon-iced-tea", name: "Iced Tea", price: 45, category: "drink", image: "/menu/iced-tea.png" , pitch: "House-blend iced tea, panlaban sa init" },
-  { id: "addon-fries-regular", name: "Regular Fries", price: 55, category: "side", image: "/menu/fries-regular.png" , pitch: "Crispy golden fries, bagong luto" },
-  { id: "addon-gravy", name: "Extra Gravy", price: 25, category: "side" , pitch: "Extra gravy — para sawsawan hanggang huling kagat" },
-  { id: "addon-peach-mango-pie", name: "Peach-Mango Pie", price: 45, category: "dessert", image: "/menu/peach-mango-pie.png" , pitch: "Mainit-init at crispy pa, may sweet peach-mango filling — perfect pang-dessert" },
-  { id: "addon-sundae-chocolate", name: "Chocolate Sundae", price: 49, category: "dessert", image: "/menu/chocolate-sundae.png" , pitch: "Creamy vanilla sundae na may chocolate syrup — pampatamis ng araw" },
-  { id: "addon-upsize-drink", name: "Upsize Drink", price: 15, category: "upsize" , pitch: "Upsize na lang para mas sulit" },
+  { id: "addon-upsize-drink", name: "Upsize Drink", shortName: "Upsized drink", price: 15, category: "upsize", pitch: "I-upsize na natin ang drink – mas sulit, ₱15 lang ang dagdag" },
+  { id: "addon-coke-regular", name: "Coke Regular", itemId: "coke-regular", price: 45, category: "drink", image: "/menu/coke-regular.png", pitch: "Ice-cold Coke — panghugas ng crispy Chickenjoy" },
+  { id: "addon-coke-float", name: "Coke Float", itemId: "coke-float", price: 60, category: "drink", image: "/menu/coke-float.png", pitch: "Coke Float — may creamy vanilla ice cream sa ibabaw, paborito ng lahat" },
+  { id: "addon-iced-tea", name: "Iced Tea", itemId: "iced-tea", price: 45, category: "drink", image: "/menu/iced-tea.png", pitch: "House-blend iced tea, panlaban sa init" },
+  { id: "addon-fries-regular", name: "Regular Fries", itemId: "fries-regular", price: 55, category: "side", image: "/menu/fries-regular.png", pitch: "Crispy golden fries, bagong luto" },
+  { id: "addon-gravy", name: "Extra Gravy", price: 25, category: "side", pitch: "Extra gravy – yung sikat na Jollibee gravy, para sawsawan hanggang huling kagat" },
+  { id: "addon-peach-mango-pie", name: "Peach-Mango Pie", itemId: "peach-mango-pie", price: 45, category: "dessert", image: "/menu/peach-mango-pie.png", pitch: "Mainit-init at crispy pa, may sweet peach-mango filling — perfect pang-dessert" },
+  { id: "addon-sundae-chocolate", name: "Chocolate Sundae", itemId: "chocolate-sundae", price: 49, category: "dessert", image: "/menu/chocolate-sundae.png", pitch: "Creamy vanilla sundae na may chocolate syrup — pampatamis ng araw" },
+  // The drink that comes with a combo or Kids Meal, picked by the customer (no charge).
+  { id: "drink-coke", name: "Coke (meal drink)", shortName: "Coke", price: 0, category: "choice", image: "/menu/coke-regular.png" },
+  { id: "drink-coke-zero", name: "Coke Zero (meal drink)", shortName: "Coke Zero", price: 0, category: "choice" },
+  { id: "drink-sprite", name: "Sprite (meal drink)", shortName: "Sprite", price: 0, category: "choice" },
+  { id: "drink-royal", name: "Royal (meal drink)", shortName: "Royal", price: 0, category: "choice" },
+  { id: "drink-iced-tea", name: "Iced Tea (meal drink)", shortName: "Iced Tea", price: 0, category: "choice", image: "/menu/iced-tea.png" },
+  { id: "drink-pineapple-juice", name: "Pineapple Juice (meal drink)", shortName: "Pineapple Juice", price: 0, category: "choice" },
 ];
+
+/** The choices of one kind, e.g. every drink a combo can come with. */
+export function choicesOf(kind: ChoiceKind) {
+  return ADDONS.filter((a) => a.category === "choice" && a.id.startsWith(CHOICE_PREFIX[kind]));
+}
+
+/** A drink ordered on its own that is also a combo drink, so a combo upgrade can take it in. */
+export const MEAL_DRINK_OF: Record<string, string> = {
+  "coke-regular": "drink-coke",
+  "iced-tea": "drink-iced-tea",
+};
+
+// Upsell lists by kind of item (first = pitched first; a combo upgrade, when
+// there is one, comes before all of these — see list_addons_for_item).
+const CHICKEN = ["addon-coke-regular", "addon-gravy", "addon-fries-regular", "addon-peach-mango-pie"];
+const BURGER = ["addon-coke-regular", "addon-fries-regular", "addon-peach-mango-pie", "addon-sundae-chocolate"];
+const PASTA = ["addon-coke-regular", "addon-peach-mango-pie", "addon-sundae-chocolate"];
+const RICE_MEAL = ["addon-coke-regular", "addon-gravy", "addon-peach-mango-pie"];
+const SIDE = ["addon-coke-regular", "addon-peach-mango-pie"];
+const DESSERT = ["addon-coke-float"];
+const DRINK = ["addon-peach-mango-pie", "addon-sundae-chocolate"];
+const COMBO = ["addon-upsize-drink", "addon-peach-mango-pie", "addon-sundae-chocolate"];
+const CHICKEN_COMBO = ["addon-upsize-drink", "addon-gravy", "addon-peach-mango-pie", "addon-sundae-chocolate"];
+const KIDS = ["addon-upsize-drink", "addon-peach-mango-pie", "addon-sundae-chocolate"];
 
 export const MENU_ITEMS: MenuItem[] = [
   // Chickenjoy
@@ -87,7 +159,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 98,
     image: "/menu/chickenjoy-1pc-solo.png",
     tags: ["bestseller"],
-    addonIds: ["addon-fries-regular", "addon-coke-regular", "addon-gravy"],
+    addonIds: CHICKEN,
     comboEligible: true,
   },
   {
@@ -97,7 +169,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "chicken",
     price: 189,
     image: "/menu/chickenjoy-2pc-solo.png",
-    addonIds: ["addon-fries-regular", "addon-coke-regular"],
+    addonIds: CHICKEN,
     comboEligible: true,
   },
   {
@@ -108,7 +180,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 116,
     image: "/menu/chickenjoy-1pc-rice.png",
     tags: ["bestseller"],
-    addonIds: ["addon-coke-regular", "addon-gravy"],
+    addonIds: RICE_MEAL,
     comboEligible: true,
   },
   // Burgers
@@ -119,7 +191,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "burgers",
     price: 39,
     image: "/menu/yumburger.png",
-    addonIds: ["addon-fries-regular", "addon-coke-regular"],
+    addonIds: BURGER,
     comboEligible: true,
   },
   {
@@ -130,7 +202,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 59,
     image: "/menu/cheesy-yumburger.png",
     tags: ["bestseller"],
-    addonIds: ["addon-fries-regular", "addon-coke-regular"],
+    addonIds: BURGER,
     comboEligible: true,
   },
   {
@@ -140,7 +212,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "burgers",
     price: 135,
     image: "/menu/champ.png",
-    addonIds: ["addon-fries-regular", "addon-coke-regular", "addon-upsize-drink"],
+    addonIds: BURGER,
     comboEligible: true,
   },
   // Spaghetti & Palabok
@@ -152,7 +224,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 65,
     image: "/menu/jolly-spaghetti-solo.png",
     tags: ["bestseller"],
-    addonIds: ["addon-coke-regular", "addon-peach-mango-pie"],
+    addonIds: PASTA,
     comboEligible: true,
   },
   {
@@ -162,7 +234,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "spaghetti-palabok",
     price: 68,
     image: "/menu/palabok-fiesta-solo.png",
-    addonIds: ["addon-coke-regular"],
+    addonIds: PASTA,
     comboEligible: true,
   },
   // Rice meals
@@ -173,7 +245,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "ricemeals",
     price: 99,
     image: "/menu/burger-steak-1pc-rice.png",
-    addonIds: ["addon-coke-regular", "addon-gravy"],
+    addonIds: RICE_MEAL,
     comboEligible: true,
   },
   {
@@ -183,7 +255,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "ricemeals",
     price: 109,
     image: "/menu/chicken-fillet-rice.png",
-    addonIds: ["addon-coke-regular"],
+    addonIds: RICE_MEAL,
     comboEligible: true,
   },
   // Sandwiches
@@ -195,7 +267,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 79,
     image: "/menu/chicken-sandwich.png",
     tags: ["new"],
-    addonIds: ["addon-fries-regular", "addon-coke-regular"],
+    addonIds: BURGER,
     comboEligible: true,
   },
   {
@@ -205,7 +277,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "sandwiches",
     price: 55,
     image: "/menu/jolly-hotdog.png",
-    addonIds: ["addon-fries-regular", "addon-coke-regular"],
+    addonIds: BURGER,
     comboEligible: true,
   },
   // Sides
@@ -216,6 +288,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "sides",
     price: 55,
     image: "/menu/fries-regular.png",
+    addonIds: SIDE,
   },
   {
     id: "chicken-nuggets-6pc",
@@ -224,7 +297,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "sides",
     price: 99,
     image: "/menu/chicken-nuggets-6pc.png",
-    addonIds: ["addon-gravy"],
+    addonIds: ["addon-coke-regular", "addon-gravy", "addon-fries-regular"],
   },
   {
     id: "mashed-potato",
@@ -233,6 +306,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "sides",
     price: 49,
     image: "/menu/mashed-potato.png",
+    addonIds: ["addon-coke-regular", "addon-gravy"],
   },
   // Desserts
   {
@@ -243,6 +317,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 45,
     image: "/menu/peach-mango-pie.png",
     tags: ["bestseller"],
+    addonIds: DESSERT,
   },
   {
     id: "halo-halo",
@@ -252,6 +327,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 89,
     image: "/menu/halo-halo.png",
     tags: ["new"],
+    addonIds: ["addon-peach-mango-pie"],
   },
   {
     id: "chocolate-sundae",
@@ -260,6 +336,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "desserts",
     price: 49,
     image: "/menu/chocolate-sundae.png",
+    addonIds: ["addon-peach-mango-pie"],
   },
   // Beverages
   {
@@ -269,6 +346,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "beverages",
     price: 45,
     image: "/menu/coke-regular.png",
+    addonIds: DRINK,
   },
   {
     id: "coke-float",
@@ -278,6 +356,7 @@ export const MENU_ITEMS: MenuItem[] = [
     price: 60,
     image: "/menu/coke-float.png",
     tags: ["bestseller"],
+    addonIds: DRINK,
   },
   {
     id: "iced-tea",
@@ -286,6 +365,7 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "beverages",
     price: 45,
     image: "/menu/iced-tea.png",
+    addonIds: DRINK,
   },
   // Kids
   {
@@ -295,6 +375,9 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "kids",
     price: 129,
     image: "/menu/kids-meal-chickenjoy.png",
+    includesDrink: true,
+    choose: { drinks: 1 },
+    addonIds: KIDS,
   },
   {
     id: "kids-meal-spaghetti",
@@ -303,63 +386,101 @@ export const MENU_ITEMS: MenuItem[] = [
     category: "kids",
     price: 109,
     image: "/menu/kids-meal-spaghetti.png",
+    includesDrink: true,
+    choose: { drinks: 1 },
+    addonIds: KIDS,
   },
 ];
+
+// Every combo comes with a regular drink the customer picks (Coke, Coke
+// Zero, Sprite, Royal, Iced Tea or Pineapple Juice) and can be upsized.
+const withDrink = { includesDrink: true, choose: { drinks: 1 } };
 
 export const COMBOS: Combo[] = [
   {
     id: "combo-chickenjoy-1pc",
     name: "1-pc Chickenjoy Combo",
-    description: "1-pc Chickenjoy w/ Rice, Regular Fries, and a Coke Regular.",
+    description: "1-pc Chickenjoy w/ Rice, Regular Fries, and a regular drink of your choice.",
     itemIds: ["chickenjoy-1pc-rice", "fries-regular", "coke-regular"],
+    upgradeFrom: ["chickenjoy-1pc-solo"],
     price: 179,
     image: "/menu/combo-chickenjoy-1pc.png",
     tags: ["bestseller"],
+    ...withDrink,
+    addonIds: CHICKEN_COMBO,
   },
   {
     id: "combo-chickenjoy-2pc",
     name: "2-pc Chickenjoy Combo",
-    description: "2-pc Chickenjoy Solo, Regular Fries, and a Coke Regular.",
+    description: "2-pc Chickenjoy Solo, Regular Fries, and a regular drink of your choice.",
     itemIds: ["chickenjoy-2pc-solo", "fries-regular", "coke-regular"],
     price: 259,
     image: "/menu/combo-chickenjoy-2pc.png",
+    ...withDrink,
+    addonIds: CHICKEN_COMBO,
   },
   {
     id: "combo-cheesy-yumburger",
     name: "Cheesy Yumburger Combo",
-    description: "Cheesy Yumburger, Regular Fries, and a Coke Regular.",
+    description: "Cheesy Yumburger, Regular Fries, and a regular drink of your choice.",
     itemIds: ["cheesy-yumburger", "fries-regular", "coke-regular"],
     price: 129,
     image: "/menu/combo-cheesy-yumburger.png",
     tags: ["bestseller"],
+    ...withDrink,
+    addonIds: COMBO,
   },
   {
     id: "combo-champ",
     name: "Champ Combo",
-    description: "Champ Burger, Regular Fries, and a Coke Regular.",
+    description: "Champ Burger, Regular Fries, and a regular drink of your choice.",
     itemIds: ["champ", "fries-regular", "coke-regular"],
     price: 199,
     image: "/menu/combo-champ.png",
+    ...withDrink,
+    addonIds: COMBO,
   },
   {
     id: "combo-jolly-spaghetti",
     name: "Jolly Spaghetti Combo",
-    description: "Jolly Spaghetti, a slice of Peach-Mango Pie, and a Coke Regular.",
+    description: "Jolly Spaghetti, a slice of Peach-Mango Pie, and a regular drink of your choice.",
     itemIds: ["jolly-spaghetti-solo", "peach-mango-pie", "coke-regular"],
     price: 139,
     image: "/menu/combo-jolly-spaghetti.png",
     tags: ["new"],
+    ...withDrink,
+    addonIds: ["addon-upsize-drink", "addon-sundae-chocolate"],
   },
   {
     id: "combo-chicken-sandwich",
     name: "Crunchy Chicken Sandwich Combo",
-    description: "Crunchy Chicken Sandwich, Regular Fries, and a Coke Regular.",
+    description: "Crunchy Chicken Sandwich, Regular Fries, and a regular drink of your choice.",
     itemIds: ["chicken-sandwich", "fries-regular", "coke-regular"],
     price: 159,
     image: "/menu/combo-chicken-sandwich.png",
     tags: ["new"],
+    ...withDrink,
+    addonIds: COMBO,
   },
 ];
+
+/** The item or combo a line orders — whichever the id is. */
+export function findProduct(id: string): MenuItem | Combo | undefined {
+  return findMenuItem(id) ?? findCombo(id);
+}
+
+/** The combos an ordered item can become ("gawin na nating combo"): its own combo, or the one it upgrades into. */
+export function combosForItem(itemId: string): Combo[] {
+  return COMBOS.filter((c) => c.itemIds[0] === itemId || c.upgradeFrom?.includes(itemId));
+}
+
+/** True when the order already has a drink — a drink item, or a combo/meal that comes with one. */
+export function hasDrinkIn(lines: Array<{ refId: string }>): boolean {
+  return lines.some((l) => {
+    const i = findMenuItem(l.refId);
+    return i?.category === "beverages" || Boolean(i?.includesDrink) || Boolean(findCombo(l.refId)?.includesDrink);
+  });
+}
 
 /**
  * The three bestsellers featured in Joy's greeting AND on the welcome card —
