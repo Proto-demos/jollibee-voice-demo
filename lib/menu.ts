@@ -107,21 +107,21 @@ export const CATEGORIES: Category[] = [
 ];
 
 export const ADDONS: Addon[] = [
-  { id: "addon-upsize-drink", name: "Upsize Drink", shortName: "Upsized drink", price: 15, category: "upsize", pitch: "I-upsize na natin ang drink – mas sulit, ₱15 lang ang dagdag" },
+  { id: "addon-upsize-drink", name: "Upsize Drink", shortName: "Upsized drink", price: 15, category: "upsize", image: "/menu/addon-upsize-drink.png", pitch: "I-upsize na natin ang drink – mas sulit, ₱15 lang ang dagdag" },
   { id: "addon-coke-regular", name: "Coke Regular", itemId: "coke-regular", price: 45, category: "drink", image: "/menu/coke-regular.png", pitch: "Ice-cold Coke — panghugas ng crispy Chickenjoy" },
   { id: "addon-coke-float", name: "Coke Float", itemId: "coke-float", price: 60, category: "drink", image: "/menu/coke-float.png", pitch: "Coke Float — may creamy vanilla ice cream sa ibabaw, paborito ng lahat" },
   { id: "addon-iced-tea", name: "Iced Tea", itemId: "iced-tea", price: 45, category: "drink", image: "/menu/iced-tea.png", pitch: "House-blend iced tea, panlaban sa init" },
   { id: "addon-fries-regular", name: "Regular Fries", itemId: "fries-regular", price: 55, category: "side", image: "/menu/fries-regular.png", pitch: "Crispy golden fries, bagong luto" },
-  { id: "addon-gravy", name: "Extra Gravy", price: 25, category: "side", pitch: "Extra gravy – yung sikat na Jollibee gravy, para sawsawan hanggang huling kagat" },
+  { id: "addon-gravy", name: "Extra Gravy", price: 25, category: "side", image: "/menu/gravy.png", pitch: "Extra gravy – yung sikat na Jollibee gravy, para sawsawan hanggang huling kagat" },
   { id: "addon-peach-mango-pie", name: "Peach-Mango Pie", itemId: "peach-mango-pie", price: 45, category: "dessert", image: "/menu/peach-mango-pie.png", pitch: "Mainit-init at crispy pa, may sweet peach-mango filling — perfect pang-dessert" },
   { id: "addon-sundae-chocolate", name: "Chocolate Sundae", itemId: "chocolate-sundae", price: 49, category: "dessert", image: "/menu/chocolate-sundae.png", pitch: "Creamy vanilla sundae na may chocolate syrup — pampatamis ng araw" },
   // The drink that comes with a combo or Kids Meal, picked by the customer (no charge).
   { id: "drink-coke", name: "Coke (meal drink)", shortName: "Coke", price: 0, category: "choice", image: "/menu/coke-regular.png" },
-  { id: "drink-coke-zero", name: "Coke Zero (meal drink)", shortName: "Coke Zero", price: 0, category: "choice" },
-  { id: "drink-sprite", name: "Sprite (meal drink)", shortName: "Sprite", price: 0, category: "choice" },
-  { id: "drink-royal", name: "Royal (meal drink)", shortName: "Royal", price: 0, category: "choice" },
+  { id: "drink-coke-zero", name: "Coke Zero (meal drink)", shortName: "Coke Zero", price: 0, category: "choice", image: "/menu/coke-zero.png" },
+  { id: "drink-sprite", name: "Sprite (meal drink)", shortName: "Sprite", price: 0, category: "choice", image: "/menu/sprite.png" },
+  { id: "drink-royal", name: "Royal (meal drink)", shortName: "Royal", price: 0, category: "choice", image: "/menu/royal.png" },
   { id: "drink-iced-tea", name: "Iced Tea (meal drink)", shortName: "Iced Tea", price: 0, category: "choice", image: "/menu/iced-tea.png" },
-  { id: "drink-pineapple-juice", name: "Pineapple Juice (meal drink)", shortName: "Pineapple Juice", price: 0, category: "choice" },
+  { id: "drink-pineapple-juice", name: "Pineapple Juice (meal drink)", shortName: "Pineapple Juice", price: 0, category: "choice", image: "/menu/pineapple-juice.png" },
 ];
 
 /** The choices of one kind, e.g. every drink a combo can come with. */

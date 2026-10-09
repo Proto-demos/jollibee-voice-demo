@@ -6,7 +6,17 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { COMBOS, MENU_ITEMS } from "../lib/menu";
+import { ADDONS, COMBOS, MENU_ITEMS } from "../lib/menu";
+
+/** Add-ons and meal drinks that have no menu item of their own to borrow a photo from. */
+const ADDON_PROMPTS: Record<string, string> = {
+  "addon-upsize-drink": "Two plain white fast-food paper soft-drink cups with white plastic lids and red straws, a tall large cup standing beside a shorter regular cup, showing a drink upsize. The lids are on, so no drink is visible.",
+  "addon-gravy": "A small round dipping cup filled with rich, glossy brown chicken gravy.",
+  "drink-coke-zero": "A clear plastic fast-food cup filled with dark brown cola and clear ice cubes, a black lid and black straw, condensation on the cup. The cola is dark brown, never red.",
+  "drink-sprite": "A clear plastic fast-food cup of colourless, crystal-clear sparkling lemon-lime soda with bubbles and clear ice cubes, a clear lid and a straw, a lemon and lime slice beside it. The soda is clear like water, not green or yellow.",
+  "drink-royal": "A clear fast-food cup of bright orange soda with ice, a lid and a straw.",
+  "drink-pineapple-juice": "A clear fast-food cup of golden pineapple juice with ice and a straw, a pineapple wedge beside it.",
+};
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -54,6 +64,11 @@ const jobs: Job[] = [
     id: combo.id,
     imagePath: combo.image,
     prompt: `A fast-food combo meal tray containing: ${combo.description} Arranged appetizingly together on a tray. ${STYLE_SUFFIX}`,
+  })),
+  ...ADDONS.filter((addon) => addon.image && ADDON_PROMPTS[addon.id]).map((addon) => ({
+    id: addon.id,
+    imagePath: addon.image!,
+    prompt: `${ADDON_PROMPTS[addon.id]} ${STYLE_SUFFIX}`,
   })),
 ];
 
