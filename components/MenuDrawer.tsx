@@ -71,7 +71,7 @@ export function MenuDrawer() {
         <span className="text-[10.5px] text-neutral-400">sabihin lang ang pangalan</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-2.5 pb-2 min-h-0">
+      <div className="menu-scroll flex-1 overflow-y-auto px-2.5 pb-2 min-h-0">
         {groups.map((group) => (
           <div key={group.label}>
             <p className="text-[9.5px] font-semibold uppercase tracking-widest text-neutral-400 px-1.5 pt-2.5 pb-1 sticky top-0 bg-background">

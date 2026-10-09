@@ -77,7 +77,7 @@ export function KioskScreen() {
   const totalCount = preview ? 1 : itemCount;
 
   return (
-    <div className="h-screen flex flex-col lg:grid lg:grid-cols-[auto_minmax(0,1fr)_min(38vw,560px)] overflow-hidden">
+    <div className="h-full flex flex-col lg:grid lg:grid-cols-[auto_minmax(0,1fr)_min(38vw,560px)] overflow-hidden">
       <TranscriptPanel entries={transcript} />
 
       {/* ================= voice stage ================= */}
