@@ -1,6 +1,6 @@
 "use client";
 
-import { DISCOUNT_LABELS, useCart } from "@/lib/cart";
+import { DISCOUNT_LABELS, formatPeso, modifierLabel, useCart } from "@/lib/cart";
 
 const PAYMENT_LABELS: Record<string, { label: string; icon: string }> = {
   cash: { label: "Cash", icon: "💵" },
@@ -13,9 +13,12 @@ const PAYMENT_LABELS: Record<string, { label: string; icon: string }> = {
  * calls (start_checkout / apply_discount / set_payment_method / confirm_order
  * / resume_ordering / clear_cart) — there is deliberately no clickable way to
  * navigate checkout. The one exception is the card gateway: paying by card
- * is a real manual step in life, so that's the only button in this modal.
+ * is a real manual step in life, so that's the only button here.
+ *
+ * Shown inside the voice stage in place of the order cards (not as a modal),
+ * so it stays centred under the mic and Joy's listening rings stay visible.
  */
-export function CheckoutModal() {
+export function CheckoutCard() {
   const { state, totals, confirmOrder } = useCart();
 
   const title = (() => {
@@ -27,26 +30,29 @@ export function CheckoutModal() {
   })();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-xl overflow-hidden">
-        <div className="bg-jb-red text-white px-5 py-4">
-          <h2 className="font-bold text-lg">{title}</h2>
+    <div className="relative z-10 w-full max-w-md">
+      <div className="card-in bg-white text-foreground rounded-2xl overflow-hidden shadow-[0_16px_40px_-16px_rgba(0,0,0,0.45)]">
+        <div className="bg-jb-yellow text-jb-red-dark px-5 py-4">
+          <h2 className="font-extrabold text-lg">{title}</h2>
         </div>
 
-        <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+        <div className="p-5 space-y-4">
           <div className="space-y-2">
             {state.lines.map((line) => (
-              <div key={line.lineId} className="flex justify-between text-sm">
+              <div key={line.lineId} className="flex justify-between gap-3 text-sm">
                 <span>
                   {line.qty}× {line.name}
+                  {line.modifiers.length > 0 && (
+                    <span className="block text-[12px] text-neutral-500">+ {modifierLabel(line)}</span>
+                  )}
                 </span>
-                <span className="font-semibold">₱{line.unitPrice * line.qty}</span>
+                <span className="font-semibold shrink-0">{formatPeso(line.unitPrice * line.qty)}</span>
               </div>
             ))}
           </div>
-          <div className="border-t border-dashed border-neutral-300 pt-3 flex justify-between text-sm">
+          <div className="border-t border-dashed border-[#E5DACB] pt-3 flex justify-between text-sm">
             <span>Subtotal</span>
-            <span>₱{totals.subtotal}</span>
+            <span>{formatPeso(totals.subtotal)}</span>
           </div>
 
           {!state.discountDecided && (
@@ -59,7 +65,7 @@ export function CheckoutModal() {
           {state.discountDecided && (
             <div className="flex justify-between text-sm text-jb-red-dark">
               <span>{DISCOUNT_LABELS[state.discount]}</span>
-              <span>−₱{totals.discountAmount}</span>
+              <span>{state.discount === "none" ? "—" : `−${formatPeso(totals.discountAmount)}`}</span>
             </div>
           )}
 
@@ -72,7 +78,7 @@ export function CheckoutModal() {
                 {Object.entries(PAYMENT_LABELS).map(([id, opt]) => (
                   <div
                     key={id}
-                    className="rounded-xl border border-neutral-200 px-2 py-3 text-center text-neutral-300"
+                    className="rounded-xl border border-[#EDE7DD] px-2 py-3 text-center text-neutral-300"
                   >
                     <div className="text-2xl grayscale opacity-50">{opt.icon}</div>
                     <div className="text-xs font-semibold mt-1">{opt.label}</div>
@@ -82,41 +88,41 @@ export function CheckoutModal() {
             </>
           )}
 
-          {state.paymentMethod && state.stage !== "confirmed" && (
-            <div className="border-t border-dashed border-neutral-300 pt-3 flex justify-between font-bold">
+          {state.discountDecided && state.stage !== "confirmed" && (
+            <div className="border-t border-dashed border-[#E5DACB] pt-3 flex justify-between font-bold">
               <span>Babayaran</span>
-              <span>₱{totals.total}</span>
+              <span>{formatPeso(totals.total)}</span>
             </div>
           )}
 
           {state.paymentMethod === "qr" && state.stage !== "confirmed" && (
             <div className="flex flex-col items-center gap-2 py-3">
-              <div className="w-36 h-36 rounded-lg bg-[repeating-conic-gradient(#241412_0_25%,white_0_50%)] bg-[length:12px_12px] border-4 border-neutral-200" />
+              <div className="w-36 h-36 rounded-lg bg-[repeating-conic-gradient(#241412_0_25%,white_0_50%)] bg-[length:12px_12px] border-4 border-[#EDE7DD]" />
               <p className="text-xs text-neutral-500">I-scan para magbayad · demo QR</p>
               <p className="text-xs text-neutral-400">Kukumpirmahin ni Joy kapag bayad na.</p>
             </div>
           )}
 
           {state.paymentMethod === "cash" && state.stage !== "confirmed" && (
-            <div className="rounded-xl border border-dashed border-neutral-300 p-4 text-center text-xs text-neutral-500">
+            <div className="rounded-xl border border-dashed border-[#E5DACB] p-4 text-center text-xs text-neutral-500">
               Magbayad po sa counter. Kukumpirmahin ni Joy ang order niyo.
             </div>
           )}
 
           {state.paymentMethod === "card" && state.stage !== "confirmed" && (
             <div className="space-y-3">
-              <div className="rounded-xl border border-neutral-200 p-4 space-y-2">
+              <div className="rounded-xl border border-[#EDE7DD] p-4 space-y-2">
                 <div className="text-xs text-neutral-400 uppercase tracking-wide">
                   Card payment gateway (demo)
                 </div>
-                <div className="h-10 rounded-lg bg-neutral-100 flex items-center px-3 text-sm text-neutral-400">
+                <div className="h-10 rounded-lg bg-background flex items-center px-3 text-sm text-neutral-400">
                   •••• •••• •••• 4242
                 </div>
                 <div className="flex gap-2">
-                  <div className="h-10 flex-1 rounded-lg bg-neutral-100 flex items-center px-3 text-sm text-neutral-400">
+                  <div className="h-10 flex-1 rounded-lg bg-background flex items-center px-3 text-sm text-neutral-400">
                     12/29
                   </div>
-                  <div className="h-10 flex-1 rounded-lg bg-neutral-100 flex items-center px-3 text-sm text-neutral-400">
+                  <div className="h-10 flex-1 rounded-lg bg-background flex items-center px-3 text-sm text-neutral-400">
                     CVC
                   </div>
                 </div>
@@ -125,7 +131,7 @@ export function CheckoutModal() {
                 onClick={() => confirmOrder()}
                 className="w-full rounded-full bg-jb-red text-white font-bold py-3 hover:bg-jb-red-dark"
               >
-                Bayaran — ₱{totals.total}
+                Bayaran — {formatPeso(totals.total)}
               </button>
             </div>
           )}
@@ -135,11 +141,11 @@ export function CheckoutModal() {
               <div className="text-5xl">✅</div>
               <p className="font-bold text-xl">Order #{state.orderNumber}</p>
               <p className="text-sm text-neutral-500">
-                Salamat po! Pumunta lang sa counter para kunin ang order niyo.
+                Salamat po! Hintayin lang tawagin ang pangalan niyo sa counter.
               </p>
-              <div className="flex justify-between font-bold border-t border-dashed border-neutral-300 pt-3">
+              <div className="flex justify-between font-bold border-t border-dashed border-[#E5DACB] pt-3">
                 <span>Nabayaran</span>
-                <span>₱{totals.total}</span>
+                <span>{formatPeso(totals.total)}</span>
               </div>
               <p className="text-xs text-neutral-400 pt-2">
                 Sabihin lang kay Joy kung gusto niyong mag-order ulit.

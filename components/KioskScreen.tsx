@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { ActionFeed } from "./ActionFeed";
 import { MenuDrawer } from "./MenuDrawer";
-import { CheckoutModal } from "./CheckoutModal";
+import { CheckoutCard } from "./CheckoutCard";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { VoiceOrb } from "./VoiceOrb";
-import { useCart } from "@/lib/cart";
+import { formatPeso, useCart } from "@/lib/cart";
+import { getFeaturedBestsellers } from "@/lib/menu";
 import {
   useRealtimeVoice,
   type ActionCard,
@@ -26,13 +27,8 @@ const PREVIEW_ACTIONS: ActionCard[] = [
     id: 1,
     kind: "bestsellers",
     title: "Mga bestseller ngayon",
-    items: [
-      { name: "1-pc Chickenjoy Combo", price: 179, image: "/menu/combo-chickenjoy-1pc.png" },
-      { name: "Cheesy Yumburger Combo", price: 129, image: "/menu/combo-cheesy-yumburger.png" },
-      { name: "1-pc Chickenjoy Solo", price: 98, image: "/menu/chickenjoy-1pc-solo.png" },
-    ],
+    items: getFeaturedBestsellers(),
   },
-  { id: 2, kind: "added", title: "1-pc Chickenjoy Combo", qty: 1, price: 179, image: "/menu/combo-chickenjoy-1pc.png", total: 179 },
 ];
 const PREVIEW_SUGGESTION: UpsellSuggestion = {
   refId: "addon-peach-mango-pie",
@@ -43,8 +39,8 @@ const PREVIEW_SUGGESTION: UpsellSuggestion = {
 };
 const PREVIEW_TRANSCRIPT: TranscriptEntry[] = [
   { id: 1, role: "assistant", text: "Hi po, welcome sa Jollibee! Ano pong gusto niyo ngayon?" },
-  { id: 2, role: "user", text: "Isang Chickenjoy Combo po." },
-  { id: 3, role: "assistant", text: "Sige po! Gusto niyo rin po ng Peach-Mango Pie, ₱45 lang?" },
+  { id: 2, role: "user", text: "Isang 1-pc Chickenjoy Combo po, Sprite, upsize na rin." },
+  { id: 3, role: "assistant", text: "Sige po! Bagay diyan ang Peach-Mango Pie, ₱45 lang – idagdag ko na po?" },
 ];
 
 export function KioskScreen() {
@@ -53,16 +49,36 @@ export function KioskScreen() {
 
   const voice = useRealtimeVoice({ openCheckout: () => cart.setStage("checkout") });
 
-  // Stage is the single source of truth: the modal is open for checkout AND
-  // the confirmation screen, closed only while ordering — so Joy's tool calls
-  // (start_checkout / resume_ordering / clear_cart) fully control it.
+  // Stage is the single source of truth: the checkout card replaces the order
+  // cards for checkout AND the confirmation screen, and goes away only while
+  // ordering — so Joy's tool calls (start_checkout / resume_ordering /
+  // clear_cart) fully control it.
   const checkoutOpen = cart.state.stage !== "ordering";
 
   useEffect(() => {
     // One-time post-mount read; window isn't available during SSR, so this
     // can't be a useState initializer without a hydration mismatch.
+    const mode = new URLSearchParams(window.location.search).get("preview");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPreview(new URLSearchParams(window.location.search).get("preview") === "voice");
+    setPreview(mode === "voice" || mode === "checkout");
+    // `?preview=voice`: a sample order on the stage (the cards come from the cart).
+    if (mode === "voice") {
+      cart.addCombo("combo-chickenjoy-1pc");
+      cart.setChoices("drinks", ["drink-sprite"], 1, "combo-chickenjoy-1pc");
+      cart.applyAddon("addon-upsize-drink", 1, "combo-chickenjoy-1pc");
+    }
+    // `?preview=checkout`: a sample order sitting at the payment step.
+    if (mode === "checkout") {
+      cart.addCombo("combo-cheesy-yumburger", 2);
+      cart.setChoices("drinks", ["drink-coke"], 1, "combo-cheesy-yumburger");
+      cart.setChoices("drinks", ["drink-iced-tea"], 1, "combo-cheesy-yumburger");
+      cart.addItem("peach-mango-pie");
+      cart.setStage("checkout");
+      cart.setDiscount("none");
+      cart.setPaymentMethod("cash");
+    }
+    // Runs once on mount; the cart actions are stable callbacks.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const status = preview ? "listening" : voice.status;
@@ -72,9 +88,9 @@ export function KioskScreen() {
   const isActive = status === "connecting" || status === "listening" || status === "speaking";
 
   const itemCount = cart.state.lines.reduce((n, l) => n + l.qty, 0);
-  const showTotal = (preview || itemCount > 0) && isActive;
-  const totalValue = preview ? 179 : cart.totals.total;
-  const totalCount = preview ? 1 : itemCount;
+  const showTotal = itemCount > 0 && isActive;
+  const totalValue = cart.totals.total;
+  const totalCount = itemCount;
 
   return (
     <div className="h-full flex flex-col lg:grid lg:grid-cols-[auto_minmax(0,1fr)_min(38vw,560px)] overflow-hidden">
@@ -104,7 +120,9 @@ export function KioskScreen() {
             getLevel={preview ? () => 0 : voice.getAudioLevel}
           />
 
-          {!isActive ? (
+          {checkoutOpen ? (
+            <CheckoutCard />
+          ) : !isActive ? (
             <>
               <div className="text-center">
                 <p className="font-extrabold text-2xl">Kausapin si Joy</p>
@@ -121,13 +139,18 @@ export function KioskScreen() {
             </>
           ) : (
             <>
-              <ActionFeed actions={actions} suggestion={suggestion} />
+              <ActionFeed
+                actions={actions}
+                lines={cart.state.lines}
+                suggestion={suggestion}
+                morphKeys={preview ? {} : voice.morphKeys}
+              />
               {showTotal && (
                 <div className="text-center">
                   <p className="text-[10.5px] font-semibold uppercase tracking-[0.18em] text-white/65">
                     Kabuuan · {totalCount} item
                   </p>
-                  <p className="font-extrabold text-4xl leading-tight">₱{totalValue}</p>
+                  <p className="font-extrabold text-4xl leading-tight">{formatPeso(totalValue)}</p>
                 </div>
               )}
             </>
@@ -150,8 +173,6 @@ export function KioskScreen() {
 
       {/* ================= menu drawer ================= */}
       <MenuDrawer />
-
-      {checkoutOpen && <CheckoutModal />}
     </div>
   );
 }

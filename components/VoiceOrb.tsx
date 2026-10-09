@@ -6,7 +6,9 @@ import type { VoiceStatus } from "@/lib/voice/useRealtimeVoice";
 function spawnRing(container: HTMLElement, level: number) {
   const ring = document.createElement("span");
   ring.className = "voice-ring";
-  ring.style.setProperty("--ring-s", String(1.9 + level * 1.6));
+  // Rings only run during a conversation, when the orb is small and the cards
+  // sit just below it: cap them at ~2x so they stop short of the cards.
+  ring.style.setProperty("--ring-s", String(1.3 + Math.min(level, 1) * 0.75));
   ring.style.setProperty("--ring-o", String(Math.min(0.3 + level * 0.7, 0.85)));
   container.appendChild(ring);
   ring.addEventListener("animationend", () => ring.remove());
@@ -52,7 +54,7 @@ export function VoiceOrb({
       onClick={onClick}
       aria-label={isActive ? "Tapusin ang order" : "Simulan ang pag-order gamit ang boses"}
       className={`relative rounded-full shrink-0 transition-all duration-300 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/50 ${
-        isActive ? "w-16 h-16" : "w-28 h-28"
+        isActive ? "w-16 h-16 mb-4" : "w-28 h-28"
       }`}
     >
       {/* audio-synced rings live behind the face */}
