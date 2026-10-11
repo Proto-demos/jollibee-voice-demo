@@ -50,9 +50,9 @@ export function HandoffCard({
         </p>
       </div>
 
-      {/* What the crew sees */}
+      {/* What the crew sees – on the crew screen from lg up; here only on small screens, which have none */}
       {handoff.takenOver ? (
-        <div className="bg-black/[0.05] px-5 py-4">
+        <div className="lg:hidden bg-black/[0.05] px-5 py-4">
           <p className="text-[11px] font-bold uppercase tracking-wider text-black/55">✓ Crew ang may hawak</p>
           <button
             onClick={onNextCustomer}
@@ -64,7 +64,7 @@ export function HandoffCard({
       ) : (
         <div
           role="alert"
-          className={`px-5 py-4 text-white ${threat ? "bg-[#7a0a05] ring-4 ring-inset ring-jb-yellow animate-pulse" : "bg-jb-red-dark"}`}
+          className={`lg:hidden px-5 py-4 text-white ${threat ? "bg-[#7a0a05] ring-4 ring-inset ring-jb-yellow animate-pulse" : "bg-jb-red-dark"}`}
         >
           <p className="text-[11px] font-bold uppercase tracking-wider text-jb-yellow">⚠ Kailangan ng live agent</p>
           <p className="text-[13px] font-bold mt-1">{HANDOFF_LABEL[handoff.kind]}</p>

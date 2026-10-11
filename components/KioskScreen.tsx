@@ -5,7 +5,7 @@ import { ActionFeed } from "./ActionFeed";
 import { MenuDrawer } from "./MenuDrawer";
 import { CheckoutCard } from "./CheckoutCard";
 import { HandoffCard, type Handoff } from "./HandoffCard";
-import { TranscriptPanel } from "./TranscriptPanel";
+import { CrewPanel, type CrewTicket } from "./CrewPanel";
 import { VoiceOrb } from "./VoiceOrb";
 import { formatPeso, useCart } from "@/lib/cart";
 import { getFeaturedBestsellers } from "@/lib/menu";
@@ -43,10 +43,10 @@ const PREVIEW_TRANSCRIPT: TranscriptEntry[] = [
   { id: 2, role: "user", text: "Isang 1-pc Chickenjoy Combo po, Sprite, upsize na rin." },
   { id: 3, role: "assistant", text: "Sige po! Bagay diyan ang Peach-Mango Pie, ₱45 lang – idagdag ko na po?" },
 ];
-/** Sample conversation for `?preview=handoff` – a question Joy passes to the crew. */
+/** Sample conversation for `?preview=handoff` – a customer Joy passes to the crew. */
 const PREVIEW_HANDOFF_TRANSCRIPT: TranscriptEntry[] = [
   { id: 1, role: "assistant", text: "Hi po, welcome sa Jollibee! Ano pong gusto niyo ngayon?" },
-  { id: 2, role: "user", text: "Sino ang presidente ng Pilipinas?" },
+  { id: 2, role: "user", text: "Pwede po bang makausap ang manager?" },
   { id: 3, role: "assistant", text: "Sandali lang po, ikokonekta ko kayo sa aming crew." },
 ];
 
@@ -56,6 +56,9 @@ export function KioskScreen() {
 
   // A customer Joy handed to a live crew member (prank, abuse, threat, asked for a person).
   const [handoff, setHandoff] = useState<Handoff | null>(null);
+  // For the crew screen's counters.
+  const [handoffCount, setHandoffCount] = useState(0);
+  const [takeOverCount, setTakeOverCount] = useState(0);
   // Joy says her one line, then her session closes – the crew has the kiosk now.
   const stopRef = useRef<() => void>(() => {});
   // Bumped on every handover, take-over and reset, so a stale safety-net
@@ -63,6 +66,7 @@ export function KioskScreen() {
   const handoffSeqRef = useRef(0);
   const onHandoff = useCallback((reason: string, kind: HandoffKind) => {
     setHandoff({ reason, kind, takenOver: false });
+    setHandoffCount((n) => n + 1);
     // Joy's session closes itself once her handover line has played; this is only a safety net.
     const seq = ++handoffSeqRef.current;
     setTimeout(() => {
@@ -81,6 +85,7 @@ export function KioskScreen() {
     voice.clearTranscript();
     cart.clearCart();
     setHandoff((h) => (h ? { ...h, takenOver: true } : h));
+    setTakeOverCount((n) => n + 1);
     setPreview(false);
   };
   /** Ready for the next customer: a clean kiosk with the mic back on. */
@@ -92,6 +97,16 @@ export function KioskScreen() {
     setHandoff(null);
     setPreview(false);
   };
+
+  // Orders Joy has sent to the kitchen, for the crew screen.
+  const [tickets, setTickets] = useState<CrewTicket[]>([]);
+  const sentRef = useRef<string | null>(null);
+  useEffect(() => {
+    const { stage, orderNumber, lines } = cart.state;
+    if (stage !== "confirmed" || !orderNumber || sentRef.current === orderNumber) return;
+    sentRef.current = orderNumber;
+    setTickets((t) => [...t, { orderNumber, lines, total: cart.totals.total, sentAt: Date.now() }]);
+  }, [cart.state, cart.totals.total]);
 
   // Stage is the single source of truth: the checkout card replaces the order
   // cards for checkout AND the confirmation screen, and goes away only while
@@ -106,7 +121,10 @@ export function KioskScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreview(mode === "voice" || mode === "checkout" || mode === "handoff");
     // `?preview=handoff`: a customer Joy passed to the crew.
-    if (mode === "handoff") setHandoff({ reason: "Asked to speak to a manager", kind: "request", takenOver: false });
+    if (mode === "handoff") {
+      setHandoff({ reason: "Asked to speak to a manager", kind: "request", takenOver: false });
+      setHandoffCount(1);
+    }
     // `?preview=voice`: a sample order on the stage (the cards come from the cart).
     if (mode === "voice") {
       cart.addCombo("combo-chickenjoy-1pc");
@@ -141,7 +159,17 @@ export function KioskScreen() {
 
   return (
     <div className="h-full flex flex-col lg:grid lg:grid-cols-[auto_minmax(0,1fr)_min(38vw,560px)] overflow-hidden">
-      <TranscriptPanel entries={transcript} />
+      <CrewPanel
+        liveLines={cart.state.stage === "confirmed" ? [] : cart.state.lines}
+        liveActive={isActive}
+        tickets={tickets}
+        transcript={transcript}
+        handoff={handoff}
+        handoffCount={handoffCount}
+        takeOverCount={takeOverCount}
+        onTakeOver={takeOver}
+        onNextCustomer={nextCustomer}
+      />
 
       {/* ================= voice stage ================= */}
       <section className="relative flex-1 lg:flex-none bg-gradient-to-br from-jb-red to-jb-red-dark text-white flex flex-col min-h-0 pb-[88px] lg:pb-0">
