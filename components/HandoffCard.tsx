@@ -15,7 +15,6 @@ const HANDOFF_LABEL: Record<HandoffKind, string> = {
   threat: "🚨 BANTA – tawagan ang security / manager",
   request: "Gusto makausap ang crew",
   complaint: "May reklamo",
-  off_topic: "Tanong na wala sa menu",
 };
 
 /**

@@ -19,8 +19,8 @@ import {
 import { choicesToPick, computeTotals, modifierLabel, type CartContextValue, type CartLine, type DiscountType, type PaymentMethod } from "@/lib/cart";
 
 /** Why Joy passed a customer to a live crew member – threats are flagged for security. */
-export type HandoffKind = "prank" | "abuse" | "threat" | "request" | "complaint" | "off_topic";
-export const HANDOFF_KINDS: HandoffKind[] = ["prank", "abuse", "threat", "request", "complaint", "off_topic"];
+export type HandoffKind = "prank" | "abuse" | "threat" | "request" | "complaint";
+export const HANDOFF_KINDS: HandoffKind[] = ["prank", "abuse", "threat", "request", "complaint"];
 
 /** What the tool handlers can show or trigger on the kiosk. */
 export interface ToolUi {
@@ -294,9 +294,9 @@ export const TOOL_DEFINITIONS = [
           type: "string",
           enum: HANDOFF_KINDS,
           description:
-            "prank = joke, impossible or not a genuine order, or messing with you; abuse = insults or harassment; threat = any threat of harm or violence; request = asked for a person or manager; complaint = a complaint you can't fix; off_topic = a question outside the menu, this order and the kiosk.",
+            "prank = joke, impossible or not a genuine order, or messing with you; abuse = insults or harassment; threat = any threat of harm or violence; request = asked for a person or manager; complaint = a complaint you can't fix. An off-topic question (outside the menu, this order and the kiosk) is never a handover – decline it politely and carry on.",
         },
-        reason: { type: "string", description: "Short reason for the crew, in English, e.g. \"Prank: ordered 500 Chickenjoy Combos\", \"Insulted the order-taker\", \"Asked for a manager\", \"Asked who the president is\"." },
+        reason: { type: "string", description: "Short reason for the crew, in English, e.g. \"Prank: ordered 500 Chickenjoy Combos\", \"Insulted the order-taker\", \"Asked for a manager\"." },
       },
       required: ["kind", "reason"],
     },

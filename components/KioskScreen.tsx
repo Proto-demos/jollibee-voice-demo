@@ -54,7 +54,7 @@ export function KioskScreen() {
   const cart = useCart();
   const [preview, setPreview] = useState(false);
 
-  // A customer Joy handed to a live crew member (prank, abuse, off-topic, asked for a person).
+  // A customer Joy handed to a live crew member (prank, abuse, threat, asked for a person).
   const [handoff, setHandoff] = useState<Handoff | null>(null);
   // Joy says her one line, then her session closes – the crew has the kiosk now.
   const stopRef = useRef<() => void>(() => {});
@@ -106,7 +106,7 @@ export function KioskScreen() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setPreview(mode === "voice" || mode === "checkout" || mode === "handoff");
     // `?preview=handoff`: a customer Joy passed to the crew.
-    if (mode === "handoff") setHandoff({ reason: "Asked who the president of the Philippines is", kind: "off_topic", takenOver: false });
+    if (mode === "handoff") setHandoff({ reason: "Asked to speak to a manager", kind: "request", takenOver: false });
     // `?preview=voice`: a sample order on the stage (the cards come from the cart).
     if (mode === "voice") {
       cart.addCombo("combo-chickenjoy-1pc");
