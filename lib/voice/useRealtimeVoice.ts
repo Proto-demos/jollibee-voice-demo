@@ -6,7 +6,8 @@ import { ADDONS, COMBOS, MENU_ITEMS, findAddon, findCombo, findMenuItem, findOrd
 import { buildSystemInstructions } from "./prompt";
 import { detectLanguage, languageNote, type CustomerLanguage } from "./language";
 import { pickGreeting, type Greeting } from "./greeting";
-import { createToolHandlers, TOOL_DEFINITIONS, type UpsellSuggestion } from "./tools";
+import { createToolHandlers, TOOL_DEFINITIONS, type HandoffKind, type UpsellSuggestion } from "./tools";
+import { GREETING_PLAYBACK_RATE, VOICE_SPEED } from "./config";
 
 export type VoiceStatus = "idle" | "connecting" | "listening" | "speaking" | "error";
 
@@ -155,7 +156,7 @@ function bestsellersCard(id: number): ActionCard {
   };
 }
 
-export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void }) {
+export function useRealtimeVoice({ openCheckout, onHandoff }: { openCheckout: () => void; onHandoff?: (reason: string, kind: HandoffKind) => void }) {
   const cart = useCart();
   const cartRef = useRef(cart);
   useEffect(() => {
@@ -184,16 +185,18 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
     setSuggestions(offer ? [offer] : []);
   }, []);
 
-  const uiRef = useRef({ openCheckout, onSuggest: showOffer });
+  const uiRef = useRef({ openCheckout, onSuggest: showOffer, onHandoff });
   useEffect(() => {
-    uiRef.current = { openCheckout, onSuggest: showOffer };
-  }, [openCheckout, showOffer]);
+    uiRef.current = { openCheckout, onSuggest: showOffer, onHandoff };
+  }, [openCheckout, showOffer, onHandoff]);
 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dcRef = useRef<RTCDataChannel | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioElRef = useRef<HTMLAudioElement | null>(null);
   const greetedRef = useRef(false);
+  /** Joy handed the customer to the crew: the mic is off and nothing they say is taken. */
+  const handedOverRef = useRef(false);
   /** Whether Joy put an offer or list on screen herself since the customer last spoke. */
   const offerShownRef = useRef(false);
   /** The greeting names the bestsellers (already on their own card) — no offer from it. */
@@ -298,7 +301,9 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
     setActions([]);
     setMorphKeys({});
     showOffer([]);
-    setTranscript([]);
+    // During a handover the transcript stays, so the crew can read what was
+    // said; it's cleared when they take over (clearTranscript).
+    if (!handedOverRef.current) setTranscript([]);
     customerSpokeRef.current = false;
     offerShownRef.current = false;
     responseActiveRef.current = false;
@@ -380,6 +385,14 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
       if (!handler) return { error: `Unknown tool: ${name}` };
       try {
         const result = handler(args) as Record<string, unknown>;
+        // Handed over: mute the customer straight away so Joy's one line isn't
+        // interrupted, and take no more turns – the crew has the kiosk now.
+        if (name === "handoff_to_crew" && !("error" in result)) {
+          handedOverRef.current = true;
+          streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = false));
+          setActions([]);
+          showOffer([]);
+        }
         if ((name === "show_offer" || name === "show_items") && !("error" in result)) offerShownRef.current = true;
         // Joy is asking which drink, not pitching: keep the offer-card safety
         // net from reading the drinks she lists as an offer.
@@ -480,13 +493,14 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
       ctx.resume().catch(() => {});
       const greeting = pickGreeting();
       const greetEl = new Audio(greeting.audio);
-      // The TTS recording reads slower than Joy speaks live; ~20% faster
+      // The TTS recording reads slower than Joy speaks live; playing it faster
       // (pitch kept) matches her pace and opens the mic sooner.
-      greetEl.playbackRate = 1.2;
+      greetEl.playbackRate = GREETING_PLAYBACK_RATE;
       greetEl.preservesPitch = true;
       const greet = { greeting, el: greetEl, done: false, failed: false };
       greetingRef.current = greet;
       const openMic = () => {
+        if (handedOverRef.current) return;
         streamRef.current?.getAudioTracks().forEach((t) => (t.enabled = true));
         if (dcRef.current?.readyState === "open") setStatus("listening");
       };
@@ -547,6 +561,7 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
       dcRef.current = dc;
 
       greetedRef.current = false;
+      handedOverRef.current = false;
       dc.addEventListener("open", () => {
         dc.send(
           JSON.stringify({
@@ -569,6 +584,7 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
                   // Hint Tagalog so whisper stops mis-detecting short words (e.g. "combo" came out as "콤보").
                   transcription: { model: "whisper-1", language: "tl" },
                 },
+                output: { speed: VOICE_SPEED },
               },
             },
           })
@@ -675,6 +691,7 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
             break;
 
           case "input_audio_buffer.committed": {
+            if (handedOverRef.current) break;
             redraftedRef.current = false;
             transcriptPending = true;
             // The customer finished speaking — unless they start again right
@@ -710,6 +727,7 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
           }
 
           case "input_audio_buffer.speech_started":
+            if (handedOverRef.current) break;
             speechSeqRef.current += 1;
             // The offer stays up while the customer answers — a "yes" turns
             // it into the added card; a "no" clears it once Joy replies.
@@ -890,6 +908,12 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
             break;
           }
 
+          // Handed over: close the session once Joy's line has fully played
+          // (not on a timer, which clipped its last word).
+          case "output_audio_buffer.stopped":
+            if (handedOverRef.current) setTimeout(() => dcRef.current === dc && stop(), 400);
+            break;
+
           case "error":
             console.error("Realtime error event", event);
             break;
@@ -925,5 +949,7 @@ export function useRealtimeVoice({ openCheckout }: { openCheckout: () => void })
 
   useEffect(() => () => stop(), [stop]);
 
-  return { status, actions, suggestions, morphKeys, transcript, errorMessage, getAudioLevel, start, stop };
+  const clearTranscript = useCallback(() => setTranscript([]), []);
+
+  return { status, actions, suggestions, morphKeys, transcript, errorMessage, getAudioLevel, start, stop, clearTranscript };
 }

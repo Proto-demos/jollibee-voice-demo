@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ActionFeed } from "./ActionFeed";
 import { MenuDrawer } from "./MenuDrawer";
 import { CheckoutCard } from "./CheckoutCard";
+import { HandoffCard, type Handoff } from "./HandoffCard";
 import { TranscriptPanel } from "./TranscriptPanel";
 import { VoiceOrb } from "./VoiceOrb";
 import { formatPeso, useCart } from "@/lib/cart";
@@ -13,7 +14,7 @@ import {
   type ActionCard,
   type TranscriptEntry,
 } from "@/lib/voice/useRealtimeVoice";
-import type { UpsellSuggestion } from "@/lib/voice/tools";
+import type { HandoffKind, UpsellSuggestion } from "@/lib/voice/tools";
 
 const STATUS_LABEL: Record<string, string> = {
   connecting: "Kumokonekta…",
@@ -42,12 +43,55 @@ const PREVIEW_TRANSCRIPT: TranscriptEntry[] = [
   { id: 2, role: "user", text: "Isang 1-pc Chickenjoy Combo po, Sprite, upsize na rin." },
   { id: 3, role: "assistant", text: "Sige po! Bagay diyan ang Peach-Mango Pie, ₱45 lang – idagdag ko na po?" },
 ];
+/** Sample conversation for `?preview=handoff` – a question Joy passes to the crew. */
+const PREVIEW_HANDOFF_TRANSCRIPT: TranscriptEntry[] = [
+  { id: 1, role: "assistant", text: "Hi po, welcome sa Jollibee! Ano pong gusto niyo ngayon?" },
+  { id: 2, role: "user", text: "Sino ang presidente ng Pilipinas?" },
+  { id: 3, role: "assistant", text: "Sandali lang po, ikokonekta ko kayo sa aming crew." },
+];
 
 export function KioskScreen() {
   const cart = useCart();
   const [preview, setPreview] = useState(false);
 
-  const voice = useRealtimeVoice({ openCheckout: () => cart.setStage("checkout") });
+  // A customer Joy handed to a live crew member (prank, abuse, off-topic, asked for a person).
+  const [handoff, setHandoff] = useState<Handoff | null>(null);
+  // Joy says her one line, then her session closes – the crew has the kiosk now.
+  const stopRef = useRef<() => void>(() => {});
+  // Bumped on every handover, take-over and reset, so a stale safety-net
+  // timer never closes the next customer's session.
+  const handoffSeqRef = useRef(0);
+  const onHandoff = useCallback((reason: string, kind: HandoffKind) => {
+    setHandoff({ reason, kind, takenOver: false });
+    // Joy's session closes itself once her handover line has played; this is only a safety net.
+    const seq = ++handoffSeqRef.current;
+    setTimeout(() => {
+      if (handoffSeqRef.current === seq) stopRef.current();
+    }, 12000);
+  }, []);
+  const voice = useRealtimeVoice({ openCheckout: () => cart.setStage("checkout"), onHandoff });
+  useEffect(() => {
+    stopRef.current = voice.stop;
+  }, [voice.stop]);
+
+  /** A crew member steps in: Joy steps back, and the conversation is theirs. */
+  const takeOver = () => {
+    handoffSeqRef.current += 1;
+    voice.stop();
+    voice.clearTranscript();
+    cart.clearCart();
+    setHandoff((h) => (h ? { ...h, takenOver: true } : h));
+    setPreview(false);
+  };
+  /** Ready for the next customer: a clean kiosk with the mic back on. */
+  const nextCustomer = () => {
+    handoffSeqRef.current += 1;
+    voice.stop();
+    voice.clearTranscript();
+    cart.clearCart();
+    setHandoff(null);
+    setPreview(false);
+  };
 
   // Stage is the single source of truth: the checkout card replaces the order
   // cards for checkout AND the confirmation screen, and goes away only while
@@ -60,7 +104,9 @@ export function KioskScreen() {
     // can't be a useState initializer without a hydration mismatch.
     const mode = new URLSearchParams(window.location.search).get("preview");
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPreview(mode === "voice" || mode === "checkout");
+    setPreview(mode === "voice" || mode === "checkout" || mode === "handoff");
+    // `?preview=handoff`: a customer Joy passed to the crew.
+    if (mode === "handoff") setHandoff({ reason: "Asked who the president of the Philippines is", kind: "off_topic", takenOver: false });
     // `?preview=voice`: a sample order on the stage (the cards come from the cart).
     if (mode === "voice") {
       cart.addCombo("combo-chickenjoy-1pc");
@@ -84,8 +130,9 @@ export function KioskScreen() {
   const status = preview ? "listening" : voice.status;
   const actions = preview ? PREVIEW_ACTIONS : voice.actions;
   const suggestion = preview ? PREVIEW_SUGGESTION : voice.suggestions[0];
-  const transcript = preview ? PREVIEW_TRANSCRIPT : voice.transcript;
-  const isActive = status === "connecting" || status === "listening" || status === "speaking";
+  const transcript = preview ? (handoff ? PREVIEW_HANDOFF_TRANSCRIPT : PREVIEW_TRANSCRIPT) : voice.transcript;
+  // Once Joy has handed over, her session is winding down: no live order UI.
+  const isActive = !handoff && (status === "connecting" || status === "listening" || status === "speaking");
 
   const itemCount = cart.state.lines.reduce((n, l) => n + l.qty, 0);
   const showTotal = itemCount > 0 && isActive;
@@ -105,22 +152,31 @@ export function KioskScreen() {
             </span>
             <b className="font-extrabold text-[15px]">Jollibee</b>
           </div>
-          {isActive && (
+          {isActive ? (
             <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-white/75">
               ● {STATUS_LABEL[status]}
             </span>
-          )}
+          ) : handoff && !handoff.takenOver ? (
+            <span className="text-[10px] font-semibold tracking-[0.14em] uppercase text-jb-yellow">
+              ● Live agent
+            </span>
+          ) : null}
         </header>
 
         <div className="flex-1 min-h-0 flex flex-col px-6 pb-6 overflow-y-auto">
           <div className="my-auto flex flex-col items-center gap-5 w-full py-2">
-          <VoiceOrb
-            status={status}
-            onClick={() => (isActive ? voice.stop() : voice.start())}
-            getLevel={preview ? () => 0 : voice.getAudioLevel}
-          />
+          {/* Handed to the crew: no mic, so nobody restarts Joy on a customer a person now has. */}
+          {!handoff && (
+            <VoiceOrb
+              status={status}
+              onClick={() => (isActive ? voice.stop() : voice.start())}
+              getLevel={preview ? () => 0 : voice.getAudioLevel}
+            />
+          )}
 
-          {checkoutOpen ? (
+          {handoff ? (
+            <HandoffCard handoff={handoff} onTakeOver={takeOver} onNextCustomer={nextCustomer} />
+          ) : checkoutOpen ? (
             <CheckoutCard />
           ) : !isActive ? (
             <>

@@ -18,6 +18,17 @@ import {
 } from "@/lib/menu";
 import { choicesToPick, computeTotals, modifierLabel, type CartContextValue, type CartLine, type DiscountType, type PaymentMethod } from "@/lib/cart";
 
+/** Why Joy passed a customer to a live crew member – threats are flagged for security. */
+export type HandoffKind = "prank" | "abuse" | "threat" | "request" | "complaint" | "off_topic";
+export const HANDOFF_KINDS: HandoffKind[] = ["prank", "abuse", "threat", "request", "complaint", "off_topic"];
+
+/** What the tool handlers can show or trigger on the kiosk. */
+export interface ToolUi {
+  openCheckout: () => void;
+  onSuggest?: (suggestions: UpsellSuggestion[]) => void;
+  onHandoff?: (reason: string, kind: HandoffKind) => void;
+}
+
 /** The one upsell Joy is pitching right now, surfaced so the UI can show it as a card. */
 export interface UpsellSuggestion {
   refId: string;
@@ -35,7 +46,8 @@ const CHOICE_IDS = (kind: ChoiceKind) => choicesOf(kind).map((a) => a.id);
 
 /** What add_item and add_combo take besides the id: what the customer already said about the drink. */
 const DRINK_PARAMS = {
-  quantity: { type: "integer", minimum: 1 },
+  quantity: { type: "integer", minimum: 1, description: "Exactly the number the customer said – never reduce it." },
+  confirmed_large: { type: "boolean", description: "Only after the customer confirmed an unusually large quantity (over 10) and it sounds genuine." },
   drink_size: { type: "string", enum: ["regular", "upsize"], description: "Combos and Kids Meals only. Regular is the default; upsize adds the drink upsize (₱15)." },
   drinks: { type: "array", items: { type: "string", enum: CHOICE_IDS("drinks") }, description: "Combos and Kids Meals: the drink(s) the customer said – one entry when they all get the same drink, or one entry PER combo when they differ (quantity 2, one Coke and one Sprite → [\"drink-coke\", \"drink-sprite\"])." },
 };
@@ -174,6 +186,7 @@ export const TOOL_DEFINITIONS = [
       properties: {
         ref_id: { type: "string", description: "line_id from get_cart, or an item/combo/addon id." },
         quantity: { type: "integer", minimum: 0 },
+        confirmed_large: { type: "boolean", description: "Only after the customer confirmed an unusually large quantity (over 10) and it sounds genuine." },
       },
       required: ["ref_id", "quantity"],
     },
@@ -267,6 +280,25 @@ export const TOOL_DEFINITIONS = [
         },
       },
       required: ["title", "ids"],
+    },
+  },
+  {
+    type: "function",
+    name: "handoff_to_crew",
+    description:
+      "Hand this customer over to a live crew member (a person takes over the kiosk). Use it for a prank, joke or impossible order, a customer messing with you, insults or harassment, any threat, an order that is clearly not genuine (e.g. absurd quantities after you checked once), when they ask for a real person or a manager, a complaint you can't fix, or ANY question you can't answer from the menu, this order, its prices or the kiosk (general knowledge, news, politics, people, store hours, branches, other brands…). Say one short polite line, then stop.",
+    parameters: {
+      type: "object",
+      properties: {
+        kind: {
+          type: "string",
+          enum: HANDOFF_KINDS,
+          description:
+            "prank = joke, impossible or not a genuine order, or messing with you; abuse = insults or harassment; threat = any threat of harm or violence; request = asked for a person or manager; complaint = a complaint you can't fix; off_topic = a question outside the menu, this order and the kiosk.",
+        },
+        reason: { type: "string", description: "Short reason for the crew, in English, e.g. \"Prank: ordered 500 Chickenjoy Combos\", \"Insulted the order-taker\", \"Asked for a manager\", \"Asked who the president is\"." },
+      },
+      required: ["kind", "reason"],
     },
   },
   {
@@ -444,9 +476,32 @@ const ORDER_CHANGING = new Set([
   "update_quantity",
 ]);
 
+/** Above this many of one product, Joy checks once before adding (prank guard). */
+const MAX_QTY = 10;
+/** Beyond this, no kiosk order is genuine: always a live agent. */
+const ABSURD_QTY = 60;
+
+/** The quantity guard for add_item / add_combo / update_quantity: null when it's fine to go ahead. */
+function quantityGuard(qty: number, name: string, confirmed: unknown, retry: string): { error: string } | null {
+  if (!Number.isFinite(qty)) return null;
+  // Hundreds of combos at a kiosk isn't a real order: never add it, a person takes over.
+  if (qty > ABSURD_QTY) {
+    return {
+      error: `Not added: ${qty}× ${name} can't be a genuine kiosk order. Call handoff_to_crew now (kind "prank", reason: the quantity) and say only the handover line – don't ask, don't comment on the number.`,
+    };
+  }
+  // A kiosk order this big is rare – check once before adding it.
+  if (qty > MAX_QTY && !confirmed) {
+    return {
+      error: `Not added: ${qty}× ${name} is unusually large for a kiosk order. Ask once, neutrally, and say ONLY: "${qty} po talaga?" (English: "${qty}, is that right?") – nothing more: don't mention pranks, the crew, a "large order" or adding it again. If they confirm and it sounds genuine (e.g. a family or office order), call ${retry} again with confirmed_large: true. If it's absurd or they're joking, call handoff_to_crew.`,
+    };
+  }
+  return null;
+}
+
 export function createToolHandlers(
   cart: CartContextValue,
-  ui: { openCheckout: () => void; onSuggest?: (suggestions: UpsellSuggestion[]) => void }
+  ui: ToolUi
 ): Record<string, (args: Record<string, unknown>) => unknown> {
   const handlers = baseHandlers(cart, ui);
   // A change during checkout ("teka, pa-add ng Peach-Mango Pie") reopens
@@ -467,13 +522,15 @@ export function createToolHandlers(
 
 function baseHandlers(
   cart: CartContextValue,
-  ui: { openCheckout: () => void; onSuggest?: (suggestions: UpsellSuggestion[]) => void }
+  ui: ToolUi
 ): Record<string, (args: Record<string, unknown>) => unknown> {
   /** add_item and add_combo: add, then put what the customer already said about the drink on exactly these. */
-  const addProduct = (id: string, quantity: unknown, drink_size: unknown, drinks: unknown) => {
+  const addProduct = (id: string, quantity: unknown, drink_size: unknown, drinks: unknown, confirmed_large: unknown, tool: string) => {
     const qty = Number(quantity) || 1;
     const product = findProduct(id);
     if (!product) return { error: `Unknown item or combo id: ${id}` };
+    const guard = quantityGuard(qty, product.name, confirmed_large, tool);
+    if (guard) return guard;
     const isCombo = Boolean(findCombo(id));
     if (drink_size === "upsize" && !product.addonIds?.includes(UPSIZE_ADDON)) {
       return { error: `${product.name} has no drink to upsize – that's for combos and Kids Meals.` };
@@ -521,19 +578,19 @@ function baseHandlers(
   };
 
   return {
-    add_item: ({ item_id, quantity, drink_size, drinks }) => {
+    add_item: ({ item_id, quantity, drink_size, drinks, confirmed_large }) => {
       let id = String(item_id);
       // A drink or dessert add-on id ("addon-coke-regular") is really that menu item.
       const addon = findAddon(id);
       if (addon?.itemId) id = addon.itemId;
       else if (addon) return { error: `${addon.name} is an add-on – call add_addon with addon_id "${addon.id}".` };
       if (!findMenuItem(id) && !findCombo(id)) return { error: `Unknown item_id: ${item_id}` };
-      return addProduct(id, quantity, drink_size, drinks);
+      return addProduct(id, quantity, drink_size, drinks, confirmed_large, "add_item");
     },
-    add_combo: ({ combo_id, quantity, drink_size, drinks }) => {
+    add_combo: ({ combo_id, quantity, drink_size, drinks, confirmed_large }) => {
       const id = String(combo_id);
       if (!findCombo(id) && !findMenuItem(id)) return { error: `Unknown combo_id: ${combo_id}` };
-      return addProduct(id, quantity, drink_size, drinks);
+      return addProduct(id, quantity, drink_size, drinks, confirmed_large, "add_combo");
     },
     upgrade_to_combo: ({ combo_id, item_id, line_id, quantity }) => {
       const res = cart.upgradeToCombo(
@@ -646,9 +703,11 @@ function baseHandlers(
       cart.removeLine(line.lineId);
       return { ...summarize(cart), removed: lineTitle(line) };
     },
-    update_quantity: ({ ref_id, quantity }) => {
+    update_quantity: ({ ref_id, quantity, confirmed_large }) => {
       const line = findLine(cart, String(ref_id));
       if (!line) return { error: `No cart line for: ${ref_id}` };
+      const guard = quantityGuard(Number(quantity), line.name, confirmed_large, "update_quantity");
+      if (guard) return guard;
       cart.updateQty(line.lineId, Number(quantity));
       return { ...summarize(cart), changed: lineTitle(line) };
     },
@@ -723,6 +782,14 @@ function baseHandlers(
     resume_ordering: () => {
       cart.setStage("ordering");
       return summarize(cart);
+    },
+    handoff_to_crew: ({ reason, kind }) => {
+      const k = (HANDOFF_KINDS as string[]).includes(String(kind)) ? (String(kind) as HandoffKind) : "prank";
+      ui.onHandoff?.(String(reason ?? "Needs a live agent"), k);
+      return {
+        handed_off: true,
+        say: 'One short, polite line and nothing more – no answer to their question, no comment on what they said. Tagalog: "Sandali lang po, ikokonekta ko kayo sa aming crew." English: "One moment please, I\'ll connect you with our crew." Don\'t take any more of the order; a crew member is taking over.',
+      };
     },
     clear_cart: () => {
       cart.clearCart();

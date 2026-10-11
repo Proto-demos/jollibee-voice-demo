@@ -1,3 +1,5 @@
+import { VOICE_SPEED } from "@/lib/voice/config";
+
 export const runtime = "nodejs";
 
 const DEFAULT_MODEL = "gpt-realtime-2.1";
@@ -23,7 +25,7 @@ export async function POST(req: Request) {
   const sessionConfig = JSON.stringify({
     type: "realtime",
     model,
-    audio: { output: { voice } },
+    audio: { output: { voice, speed: VOICE_SPEED } },
   });
 
   const formData = new FormData();

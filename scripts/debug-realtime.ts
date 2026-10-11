@@ -8,6 +8,7 @@ import { buildSystemInstructions } from "../lib/voice/prompt";
 import { detectLanguage, languageNote, type CustomerLanguage } from "../lib/voice/language";
 import { GREETINGS } from "../lib/voice/greeting";
 import { createToolHandlers, TOOL_DEFINITIONS } from "../lib/voice/tools";
+import { VOICE_SPEED } from "../lib/voice/config";
 import type { ChoiceKind } from "../lib/menu";
 import { cartReducer, computeTotals, initialState, modifierLabel, planAddon, planChoices, planRemoveAddon, planUpgrade, type CartAction, type CartContextValue } from "../lib/cart";
 
@@ -52,7 +53,10 @@ const cart = {
   setStage: (stage: CartContextValue["state"]["stage"]) => dispatch({ type: "SET_STAGE", stage }),
   confirmOrder: () => (dispatch({ type: "CONFIRM_ORDER", orderNumber: "JB-0001" }), "JB-0001"),
 } as unknown as CartContextValue;
-const HANDLERS = createToolHandlers(cart, { openCheckout: () => {} });
+const HANDLERS = createToolHandlers(cart, {
+  openCheckout: () => {},
+  onHandoff: (reason, kind) => console.log(`     HANDOFF TO CREW [${kind}]: ${reason}`),
+});
 const orderText = () =>
   cartState.lines.map((l) => `${l.qty}× ${l.name}${l.modifiers.length ? ` (${modifierLabel(l)})` : ""}`).join(" | ") +
   ` = ₱${computeTotals(cartState).total}`;
@@ -136,6 +140,7 @@ async function main() {
             turn_detection: { type: "semantic_vad", create_response: false, interrupt_response: true, ...(process.env.VAD_EAGERNESS && { eagerness: process.env.VAD_EAGERNESS }) },
             transcription: { model: "whisper-1", language: "tl" },
           },
+          output: { speed: VOICE_SPEED },
         },
       },
     });
